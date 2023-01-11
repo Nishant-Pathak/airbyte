@@ -70,4 +70,17 @@ public class SshWrappedSource implements Source {
     return AutoCloseableIterators.appendOnClose(delegateRead, tunnel::close);
   }
 
+  @Override
+  public AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
+    final SshTunnel tunnel = SshTunnel.getInstance(config, hostKey, portKey);
+    final AutoCloseableIterator<JsonNode> delegateRead;
+    try {
+      delegateRead = delegate.readFromQuery(tunnel.getConfigInTunnel(), query);
+    } catch (final Exception e) {
+      LOGGER.error("Exception occurred while getting the delegate read iterator, closing SSH tunnel", e);
+      tunnel.close();
+      throw e;
+    }
+    return AutoCloseableIterators.appendOnClose(delegateRead, tunnel::close);
+  }
 }
