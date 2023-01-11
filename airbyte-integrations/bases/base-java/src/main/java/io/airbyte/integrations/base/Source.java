@@ -36,4 +36,22 @@ public interface Source extends Integration {
    */
   AutoCloseableIterator<AirbyteMessage> read(JsonNode config, ConfiguredAirbyteCatalog catalog, JsonNode state) throws Exception;
 
+  default AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
+    return new AutoCloseableIterator<>() {
+      @Override
+      public void close() {
+      }
+
+      @Override
+      public boolean hasNext() {
+        return false;
+      }
+
+      @Override
+      public JsonNode next() {
+        return null;
+      }
+    };
+  };
+
 }

@@ -49,6 +49,7 @@ import io.airbyte.integrations.source.relationaldb.TableInfo;
 import io.airbyte.integrations.source.relationaldb.state.StateManager;
 import io.airbyte.protocol.models.CommonField;
 import io.airbyte.protocol.models.JsonSchemaType;
+import io.airbyte.protocol.models.v0.AirbyteMessage;
 import io.airbyte.protocol.models.v0.AirbyteStreamNameNamespacePair;
 import io.airbyte.protocol.models.v0.ConfiguredAirbyteCatalog;
 import io.airbyte.protocol.models.v0.ConfiguredAirbyteStream;
@@ -613,4 +614,9 @@ public abstract class AbstractJdbcSource<Datatype> extends AbstractDbSource<Data
         .collect(Collectors.toList());
   }
 
+  @Override
+  public AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
+    JdbcDatabase database = createDatabase(config);
+    return queryTable(database, query);
+  }
 }

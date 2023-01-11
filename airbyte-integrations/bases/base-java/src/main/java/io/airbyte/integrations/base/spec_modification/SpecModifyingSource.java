@@ -49,4 +49,8 @@ public abstract class SpecModifyingSource implements Source {
     return source.read(config, catalog, state);
   }
 
+  @Override
+  public AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
+    return source.readFromQuery(config, query);
+  }
 }
