@@ -39,7 +39,7 @@ public class MySqlStrictEncryptSource extends SpecModifyingSource implements Sou
       "<li><b>verify-ca</b> - Always connect with SSL. Verifies CA, but allows connection even if Hostname does not match.</li>" +
       "<li><b>Verify Identity</b> - Always connect with SSL. Verify both CA and Hostname.</li></ul>Read more <a href=\"https://dev.mysql.com/doc/connector-j/8.0/en/connector-j-reference-using-ssl.html\"> in the docs</a>.";
 
-  MySqlStrictEncryptSource() {
+  public MySqlStrictEncryptSource() {
     super(MySqlSource.sshWrappedSource());
   }
 
