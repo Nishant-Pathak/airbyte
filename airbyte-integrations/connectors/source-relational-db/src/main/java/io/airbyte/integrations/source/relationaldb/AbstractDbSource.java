@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2022 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.integrations.source.relationaldb;
 
 import static io.airbyte.integrations.base.errors.messages.ErrorMessage.getErrorMessage;
+import static io.airbyte.protocol.models.v0.CatalogHelpers.fieldsToJsonSchema;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Preconditions;
@@ -161,6 +162,8 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
 
     validateCursorFieldForIncrementalTables(fullyQualifiedTableNameToInfo, catalog, database);
 
+    logSourceSchemaChange(fullyQualifiedTableNameToInfo, catalog);
+
     final List<AutoCloseableIterator<AirbyteMessage>> incrementalIterators =
         getIncrementalIterators(database, catalog, fullyQualifiedTableNameToInfo, stateManager,
             emittedAt);
@@ -180,13 +183,42 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
         });
   }
 
+  // in case of user manually modified source table schema but did not refresh it and save into the
+  // catalog - it can lead to sync failure. This method compare actual schema vs catalog schema
+  private void logSourceSchemaChange(Map<String, TableInfo<CommonField<DataType>>> fullyQualifiedTableNameToInfo,
+                                     ConfiguredAirbyteCatalog catalog) {
+    for (final ConfiguredAirbyteStream airbyteStream : catalog.getStreams()) {
+      final AirbyteStream stream = airbyteStream.getStream();
+      final String fullyQualifiedTableName = getFullyQualifiedTableName(stream.getNamespace(),
+          stream.getName());
+      if (!fullyQualifiedTableNameToInfo.containsKey(fullyQualifiedTableName)) {
+        continue;
+      }
+      final TableInfo<CommonField<DataType>> table = fullyQualifiedTableNameToInfo.get(fullyQualifiedTableName);
+      final List<Field> fields = table.getFields()
+          .stream()
+          .map(this::toField)
+          .distinct()
+          .collect(Collectors.toList());
+      final JsonNode currentJsonSchema = fieldsToJsonSchema(fields);
+
+      final JsonNode catalogSchema = stream.getJsonSchema();
+      if (!catalogSchema.equals(currentJsonSchema)) {
+        LOGGER.warn(
+            "Source schema changed for table  {}! Actual schema: {}. Catalog schema:  {}",
+            fullyQualifiedTableName,
+            currentJsonSchema,
+            catalogSchema);
+      }
+    }
+  }
+
   private void validateCursorFieldForIncrementalTables(
                                                        final Map<String, TableInfo<CommonField<DataType>>> tableNameToTable,
                                                        final ConfiguredAirbyteCatalog catalog,
                                                        final Database database)
       throws SQLException {
     final List<InvalidCursorInfo> tablesWithInvalidCursor = new ArrayList<>();
-    final List<InvalidCursorInfo> tablesWithInvalidCursorToWarnAbout = new ArrayList<>();
     for (final ConfiguredAirbyteStream airbyteStream : catalog.getStreams()) {
       final AirbyteStream stream = airbyteStream.getStream();
       final String fullyQualifiedTableName = getFullyQualifiedTableName(stream.getNamespace(),
@@ -219,14 +251,10 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
       }
 
       if (!verifyCursorColumnValues(database, stream.getNamespace(), stream.getName(), cursorField.get())) {
-        tablesWithInvalidCursorToWarnAbout.add(
+        tablesWithInvalidCursor.add(
             new InvalidCursorInfo(fullyQualifiedTableName, cursorField.get(),
                 cursorType.toString(), "Cursor column contains NULL value"));
       }
-    }
-
-    if (!tablesWithInvalidCursorToWarnAbout.isEmpty()) {
-      LOGGER.warn("source-postgres detected null cursor value " + InvalidCursorInfoUtil.getInvalidCursorConfigMessage(tablesWithInvalidCursor));
     }
 
     if (!tablesWithInvalidCursor.isEmpty()) {
@@ -248,14 +276,39 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
     return true;
   }
 
+  /**
+   * Estimates the total volume (rows and bytes) to sync and emits a
+   * {@link AirbyteEstimateTraceMessage} associated with the full refresh stream.
+   *
+   * @param database database
+   */
+  protected void estimateFullRefreshSyncSize(final Database database,
+                                             final ConfiguredAirbyteStream configuredAirbyteStream) {
+    /* no-op */
+  }
+
+  /**
+   * Estimates the total volume (rows and bytes) to sync and emits a
+   * {@link AirbyteEstimateTraceMessage} associated with an incremental stream.
+   *
+   * @param database database
+   */
+  protected void estimateIncrementalSyncSize(final Database database,
+                                             final ConfiguredAirbyteStream configuredAirbyteStream,
+                                             final CursorInfo cursorInfo,
+                                             final DataType dataType) {
+    /* no-op */
+  }
+
   private List<TableInfo<CommonField<DataType>>> discoverWithoutSystemTables(
                                                                              final Database database)
       throws Exception {
     final Set<String> systemNameSpaces = getExcludedInternalNameSpaces();
+    final Set<String> systemViews = getExcludedViews();
     final List<TableInfo<CommonField<DataType>>> discoveredTables = discoverInternal(database);
     return (systemNameSpaces == null || systemNameSpaces.isEmpty() ? discoveredTables
         : discoveredTables.stream()
-            .filter(table -> !systemNameSpaces.contains(table.getNameSpace())).collect(
+            .filter(table -> !systemNameSpaces.contains(table.getNameSpace()) && !systemViews.contains(table.getName())).collect(
                 Collectors.toList()));
   }
 
@@ -378,6 +431,7 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
             emittedAt);
       } else {
         // if no cursor is present then this is the first read for is the same as doing a full refresh read.
+        estimateFullRefreshSyncSize(database, airbyteStream);
         airbyteMessageIterator = getFullRefreshStream(database, streamName, namespace,
             selectedDatabaseFields, table, emittedAt);
       }
@@ -396,6 +450,7 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
               getStateEmissionFrequency()),
           airbyteMessageIterator);
     } else if (airbyteStream.getSyncMode() == SyncMode.FULL_REFRESH) {
+      estimateFullRefreshSyncSize(database, airbyteStream);
       iterator = getFullRefreshStream(database, streamName, namespace, selectedDatabaseFields,
           table, emittedAt);
     } else if (airbyteStream.getSyncMode() == null) {
@@ -445,6 +500,7 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
         table.getFields().stream().anyMatch(f -> f.getName().equals(cursorField)),
         String.format("Could not find cursor field %s in table %s", cursorField, table.getName()));
 
+    estimateIncrementalSyncSize(database, airbyteStream, cursorInfo, cursorType);
     final AutoCloseableIterator<JsonNode> queryIterator = queryTableIncremental(
         database,
         selectedDatabaseFields,
@@ -612,11 +668,18 @@ public abstract class AbstractDbSource<DataType, Database extends AbstractDataba
   protected abstract JsonSchemaType getAirbyteType(DataType columnType);
 
   /**
-   * Get list of system namespaces(schemas) in order to exclude them from the discover result list.
+   * Get list of system namespaces(schemas) in order to exclude them from the `discover` result list.
    *
    * @return set of system namespaces(schemas) to be excluded
    */
   protected abstract Set<String> getExcludedInternalNameSpaces();
+
+  /**
+   * Get list of system views in order to exclude them from the `discover` result list.
+   *
+   * @return set of views to be excluded
+   */
+  protected Set<String> getExcludedViews() { return Collections.emptySet(); };
 
   /**
    * Discover all available tables in the source database.

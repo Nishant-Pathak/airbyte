@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Airbyte, Inc., all rights reserved.
+ * Copyright (c) 2023 Airbyte, Inc., all rights reserved.
  */
 
 package io.airbyte.workers.internal.book_keeping;
@@ -67,6 +67,7 @@ public class AirbyteMessageTracker implements MessageTracker {
   private final List<AirbyteTraceMessage> sourceErrorTraceMessages;
   private final StateAggregator stateAggregator;
   private final FeatureFlags featureFlags;
+  private final boolean featureFlagLogConnectorMsgs;
 
   // These variables support SYNC level estimates and are meant for sources where stream level
   // estimates are not possible e.g. CDC sources.
@@ -118,6 +119,7 @@ public class AirbyteMessageTracker implements MessageTracker {
     this.sourceErrorTraceMessages = new ArrayList<>();
     this.stateAggregator = stateAggregator;
     this.featureFlags = featureFlags;
+    this.featureFlagLogConnectorMsgs = featureFlags.logConnectorMessages();
   }
 
   @Trace(operationName = WORKER_OPERATION_NAME)
@@ -545,7 +547,7 @@ public class AirbyteMessageTracker implements MessageTracker {
   }
 
   private void logMessageAsJSON(final String caller, final AirbyteMessage message) {
-    if (!featureFlags.logConnectorMessages()) {
+    if (!featureFlagLogConnectorMsgs) {
       return;
     }
 
