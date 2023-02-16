@@ -25,14 +25,14 @@ COPY --from=builder /usr/share/zoneinfo/Etc/UTC /etc/localtime
 RUN echo "Etc/UTC" > /etc/timezone
 
 # bash is installed for more convenient debugging.
-RUN apk --no-cache add bash
+RUN apk --no-cache add bash openjdk17-jre
 
 # copy payload code only
 COPY main.py ./
 COPY google_sheets_source ./google_sheets_source
 
 ENV AIRBYTE_ENTRYPOINT "python /airbyte/integration_code/main.py"
-ENTRYPOINT ["python", "/airbyte/integration_code/main.py"]
+#ENTRYPOINT ["python", "/airbyte/integration_code/main.py"]
 
 LABEL io.airbyte.version=0.2.31
 LABEL io.airbyte.name=airbyte/source-google-sheets
