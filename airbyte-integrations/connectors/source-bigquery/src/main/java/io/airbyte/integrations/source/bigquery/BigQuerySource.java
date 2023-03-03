@@ -199,4 +199,10 @@ public class BigQuerySource extends AbstractDbSource<StandardSQLTypeName, BigQue
   @Override
   public void close() throws Exception {}
 
+  @Override
+  public AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
+    final BigQueryDatabase database = createDatabase(config);
+    LOGGER.info("Running query: {}", query);
+    return queryTable(database, query);
+  }
 }
