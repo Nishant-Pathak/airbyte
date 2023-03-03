@@ -53,4 +53,5 @@ public abstract class SpecModifyingSource implements Source {
   public AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
     return source.readFromQuery(config, query);
   }
+
 }

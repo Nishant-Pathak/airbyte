@@ -38,9 +38,9 @@ public interface Source extends Integration {
 
   default AutoCloseableIterator<JsonNode> readFromQuery(JsonNode config, String query) throws Exception {
     return new AutoCloseableIterator<>() {
+
       @Override
-      public void close() {
-      }
+      public void close() {}
 
       @Override
       public boolean hasNext() {
@@ -51,6 +51,7 @@ public interface Source extends Integration {
       public JsonNode next() {
         return null;
       }
+
     };
   };
 
