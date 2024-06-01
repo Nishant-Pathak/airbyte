@@ -33,7 +33,7 @@ public class PostgresSourceStrictEncrypt extends SpecModifyingSource implements 
   public static final String SSL_MODE_PREFER = "prefer";
   public static final String SSL_MODE_DISABLE = "disable";
 
-  PostgresSourceStrictEncrypt() {
+  public PostgresSourceStrictEncrypt() {
     super(PostgresSource.sshWrappedSource());
   }
 
